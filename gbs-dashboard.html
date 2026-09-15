@@ -472,27 +472,36 @@ function fmt(n){ return Math.round(n).toLocaleString('ar-EG'); }
 let yearChartInstance;
 function drawYearChart(salesData, purchData){
   const ctx = document.getElementById('yearChart');
-  if(yearChartInstance) yearChartInstance.destroy();
-  Chart.defaults.font.family = "'Tajawal', sans-serif";
-  Chart.defaults.color = '#8CA0AF';
-  yearChartInstance = new Chart(ctx, {
-    type:'bar',
-    data:{
-      labels: YEARS.map(String),
-      datasets:[
-        {label:'صافي المبيعات', data:salesData, backgroundColor:'#D4A24E', borderRadius:6, maxBarThickness:46},
-        {label:'صافي المشتريات', data:purchData, backgroundColor:'#4FAE8C', borderRadius:6, maxBarThickness:46},
-      ]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'top', labels:{usePointStyle:true, boxWidth:8} } },
-      scales:{
-        x:{ grid:{display:false} },
-        y:{ grid:{color:'rgba(255,255,255,.06)'}, ticks:{ callback:v=>Number(v).toLocaleString('ar-EG') } }
+  if(typeof Chart === 'undefined'){
+    ctx.parentElement.innerHTML = '<p style="color:var(--muted); font-size:13px; padding-top:120px; text-align:center;">تعذّر تحميل مكتبة الرسم البياني (Chart.js) من الإنترنت — الأرقام والجداول شغالة عادي، بس الشارت مش هيظهر. جرب شبكة/متصفح تاني لو محتاج الشارت يشتغل.</p>';
+    return;
+  }
+  try{
+    if(yearChartInstance) yearChartInstance.destroy();
+    Chart.defaults.font.family = "'Tajawal', sans-serif";
+    Chart.defaults.color = '#8CA0AF';
+    yearChartInstance = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels: YEARS.map(String),
+        datasets:[
+          {label:'صافي المبيعات', data:salesData, backgroundColor:'#D4A24E', borderRadius:6, maxBarThickness:46},
+          {label:'صافي المشتريات', data:purchData, backgroundColor:'#4FAE8C', borderRadius:6, maxBarThickness:46},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'top', labels:{usePointStyle:true, boxWidth:8} } },
+        scales:{
+          x:{ grid:{display:false} },
+          y:{ grid:{color:'rgba(255,255,255,.06)'}, ticks:{ callback:v=>Number(v).toLocaleString('ar-EG') } }
+        }
       }
-    }
-  });
+    });
+  }catch(e){
+    console.error('chart error', e);
+    ctx.parentElement.innerHTML = '<p style="color:var(--muted); font-size:13px; padding-top:120px; text-align:center;">تعذّر رسم الشارت، لكن باقي البيانات شغالة عادي.</p>';
+  }
 }
 
 loadEverything();
