@@ -194,7 +194,7 @@
 const SHEET_KEY = "2PACX-1vTnAbBkCvvcMt1KW9v8GRR11FEz-wKvvKMQDVyCL4sexBFiL2DYR_F6j85kcWVWTQ0z_oN37E2XpbmK";
 
 const SHEETS = {
-  sales:           { gid: 0,          label: 'المبيعات' },
+  sales:           { gid: 1789450703, label: 'المبيعات' },
   returnSales:     { gid: 160121030,  label: 'مرتجع المبيعات' },
   purchases:       { gid: 796280215,  label: 'المشتريات' },
   returnPurchases: { gid: 1135994598, label: 'مرتجع المشتريات' },
@@ -294,9 +294,13 @@ async function loadEverything(){
   diag.length = 0;
   setStatus('loading','جاري السحب...');
   try{
-    const [sales, returnSales, purchases, returnPurchases, materialCodes, customers] = await Promise.all(
-      Object.values(SHEETS).map(s => fetchSheet(s.gid))
-    );
+    const entries = Object.entries(SHEETS);
+    const results = await Promise.allSettled(entries.map(([,s]) => fetchSheet(s.gid)));
+    const failed = results.map((r,i)=> r.status==='rejected' ? entries[i][1].label+' (gid='+entries[i][1].gid+'): '+r.reason.message : null).filter(Boolean);
+    if(failed.length){
+      throw new Error('تعذّر تحميل: ' + failed.join(' | '));
+    }
+    const [sales, returnSales, purchases, returnPurchases, materialCodes, customers] = results.map(r=>r.value);
 
     const salesRows      = mapRows('المبيعات', sales.rows, sales.headers, ['code','date','amount','qty','customer','salesRep']);
     const returnSalesRows= mapRows('مرتجع المبيعات', returnSales.rows, returnSales.headers, ['code','date','amount','qty','customer']);
