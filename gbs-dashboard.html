@@ -339,7 +339,7 @@ async function loadEverything(){
     const purchRows      = mapRows('المشتريات', purchases.rows, purchases.headers, ['code','date','amount','qty','supplier']);
     const returnPurchRows= mapRows('مرتجع المشتريات', returnPurchases.rows, returnPurchases.headers, ['code','date','amount','qty']);
     const codeRows       = mapRows('الأكواد والموردين', materialCodes.rows, materialCodes.headers, ['code','supplier']);
-    const custRows       = mapRows('العملاء', customers.rows, customers.headers, ['customer']);
+    const custRows       = mapRows('العملاء', customers.rows, customers.headers, ['customer','salesRep']);
 
     // خريطة كود -> مورد (لربط المشتريات ومرتجعاتها بالمورد)
     const codeToSupplier = {};
@@ -347,7 +347,13 @@ async function loadEverything(){
     purchRows.forEach(r => { if(!r.supplier && r.code) r.supplier = codeToSupplier[normalize(r.code)] || 'غير معروف'; });
     returnPurchRows.forEach(r => { if(r.code) r.supplier = codeToSupplier[normalize(r.code)] || 'غير معروف'; });
 
-    state = { salesRows, returnSalesRows, purchRows, returnPurchRows, codeRows, custRows, codeToSupplier };
+    // خريطة عميل -> مندوب (في حالة إن عمود المندوب موجود في شيت العملاء مش في شيت المبيعات نفسه)
+    const customerToRep = {};
+    custRows.forEach(r => { if(r.customer && r.salesRep) customerToRep[normalize(r.customer)] = r.salesRep; });
+    salesRows.forEach(r => { if(!r.salesRep && r.customer) r.salesRep = customerToRep[normalize(r.customer)] || null; });
+    returnSalesRows.forEach(r => { if(!r.salesRep && r.customer) r.salesRep = customerToRep[normalize(r.customer)] || null; });
+
+    state = { salesRows, returnSalesRows, purchRows, returnPurchRows, codeRows, custRows, codeToSupplier, customerToRep };
 
     render();
     setStatus('ok','متصل');
@@ -472,6 +478,7 @@ function renderFilteredSections(){
   // ---- مندوبي المبيعات ----
   const repMap = {};
   sRows.forEach(r=>{ if(r.salesRep){ repMap[r.salesRep] = repMap[r.salesRep] || {sales:0,ret:0}; repMap[r.salesRep].sales += r.amount; }});
+  rsRows.forEach(r=>{ if(r.salesRep){ repMap[r.salesRep] = repMap[r.salesRep] || {sales:0,ret:0}; repMap[r.salesRep].ret += r.amount; }});
   state.repsFull = Object.entries(repMap).map(([name,v])=>({name, net:v.sales-v.ret, ret:v.ret, sales:v.sales, rate: v.sales? v.ret/v.sales : 0}))
     .sort((a,b)=>b.net-a.net).map((r,i)=>({...r, idx:i}));
 
