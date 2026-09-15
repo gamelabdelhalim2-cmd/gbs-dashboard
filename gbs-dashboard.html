@@ -42,6 +42,14 @@
   button.refresh{background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:9px 16px; border-radius:100px; font-family:var(--sans); font-size:13px; cursor:pointer; transition:border-color .15s, background .15s;}
   button.refresh:hover{border-color:var(--gold); background:#1e2c3a;}
 
+  select#yearFilter, input.search-box{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border); border-radius:8px;
+    padding:7px 12px; font-family:var(--sans); font-size:13px; outline:none;
+  }
+  select#yearFilter:focus, input.search-box:focus{ border-color:var(--gold); }
+  input.search-box{ min-width:170px; }
+  input.search-box::placeholder{ color:var(--muted-2); }
+
   /* loading / error */
   #loadingScreen{position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; z-index:50;}
   .spinner{width:34px; height:34px; border-radius:50%; border:3px solid var(--border); border-top-color:var(--gold); animation:spin .8s linear infinite;}
@@ -137,6 +145,19 @@
 
   <div class="banner" id="errorBanner"></div>
 
+  <div class="panel reveal filterbar" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:14px 18px; margin-bottom:24px;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <label for="yearFilter" style="font-size:13px; color:var(--muted);">فلتر السنة</label>
+      <select id="yearFilter" onchange="onYearFilterChange()">
+        <option value="all">كل السنين</option>
+        <option value="2023">2023</option>
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+      </select>
+    </div>
+    <span style="color:var(--muted-2); font-size:12px;">بيأثر على: أكبر العملاء · أداء المندوبين · أداء الموردين · مطابقة الأرقام</span>
+  </div>
+
   <section class="reveal">
     <div class="section-head"><h2>نظرة عامة حسب السنة</h2><span>صافي = إجمالي − مرتجعات</span></div>
     <div class="hero-grid" id="heroGrid"></div>
@@ -150,7 +171,7 @@
   <section class="reveal">
     <div class="grid-2">
       <div class="panel">
-        <div class="section-head"><h2>أكبر العملاء (حجم التعامل)</h2><span>صافي القيمة</span></div>
+        <div class="section-head"><h2>أكبر العملاء (حجم التعامل)</h2><input class="search-box" id="customerSearch" placeholder="بحث عن عميل..." oninput="filterTable('customer')"></div>
         <table class="ledger" id="customersTable"><thead><tr><th>#</th><th>العميل</th><th>صافي القيمة</th><th></th></tr></thead><tbody></tbody></table>
       </div>
       <div class="panel">
@@ -162,15 +183,17 @@
 
   <section class="reveal">
     <div class="panel">
-      <div class="section-head"><h2>أداء مندوبي المبيعات</h2><span>مرتب حسب صافي المبيعات — نسبة المرتجع كمؤشر جودة</span></div>
+      <div class="section-head"><h2>أداء مندوبي المبيعات</h2><input class="search-box" id="repSearch" placeholder="بحث عن مندوب..." oninput="filterTable('rep')"></div>
       <table class="ledger" id="repsTable"><thead><tr><th>#</th><th>المندوب</th><th>صافي المبيعات</th><th>نسبة المرتجع</th><th>التقييم</th></tr></thead><tbody></tbody></table>
+      <p style="color:var(--muted-2); font-size:11.5px; margin:10px 2px 0;">مرتب حسب صافي المبيعات — نسبة المرتجع بتوضح جودة الأداء</p>
     </div>
   </section>
 
   <section class="reveal">
     <div class="panel">
-      <div class="section-head"><h2>أداء الموردين</h2><span>مرتب حسب نسبة المرتجع (الأقل = الأفضل جودة) — الحجم للمقارنة</span></div>
+      <div class="section-head"><h2>أداء الموردين</h2><input class="search-box" id="supplierSearch" placeholder="بحث عن مورد..." oninput="filterTable('supplier')"></div>
       <table class="ledger" id="suppliersTable"><thead><tr><th>#</th><th>المورد</th><th>إجمالي المشتريات</th><th>نسبة المرتجع</th><th>التقييم</th></tr></thead><tbody></tbody></table>
+      <p style="color:var(--muted-2); font-size:11.5px; margin:10px 2px 0;">مرتب حسب نسبة المرتجع (الأقل = الأفضل جودة) — الحجم موجود للمقارنة</p>
     </div>
   </section>
 
@@ -223,6 +246,9 @@ function csvUrl(gid){
 function normalize(s){
   return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');
 }
+function looseKey(s){
+  return normalize(s).replace(/[^a-z0-9\u0600-\u06FF]/g,'');
+}
 
 function findColumn(headers, key){
   const candidates = COLUMN_ALIASES[key].map(normalize);
@@ -234,6 +260,12 @@ function findColumn(headers, key){
   // partial match fallback
   for(let i=0;i<normHeaders.length;i++){
     if(candidates.some(c => normHeaders[i].includes(c) || c.includes(normHeaders[i]))) return headers[i];
+  }
+  // loose fallback: ignore spaces/punctuation entirely (handles "SalesMan", "Sales-Man", etc.)
+  const looseCandidates = COLUMN_ALIASES[key].map(looseKey);
+  const looseHeaders = headers.map(looseKey);
+  for(let i=0;i<looseHeaders.length;i++){
+    if(looseCandidates.includes(looseHeaders[i])) return headers[i];
   }
   return null;
 }
@@ -350,10 +382,33 @@ function sumWhere(rows, filterFn){
   return rows.filter(filterFn).reduce((a,r)=>a+(r.amount||0),0);
 }
 
-function render(){
-  const {salesRows, returnSalesRows, purchRows, returnPurchRows, custRows} = state;
+let currentYearFilter = 'all';
+function onYearFilterChange(){
+  currentYearFilter = document.getElementById('yearFilter').value;
+  currentYearFilter = currentYearFilter==='all' ? 'all' : parseInt(currentYearFilter);
+  renderFilteredSections();
+}
+function applyYearFilter(rows){
+  if(currentYearFilter==='all') return rows;
+  return rows.filter(r=>r.year===currentYearFilter);
+}
 
-  // ---- نظرة عامة سنوية ----
+function render(){
+  renderHeroAndChart();
+  renderFilteredSections();
+
+  // ---- تشخيص ----
+  const diagBox = document.getElementById('diagBox');
+  diagBox.innerHTML = diag.map(d => {
+    const cls = d.found ? 'ok' : 'bad';
+    const icon = d.found ? '✓' : '✗';
+    return `<div class="diag-row"><span class="${cls}">${icon}</span><span>${d.sheetLabel} — ${d.key}</span><span class="muted">${d.found ? '→ '+d.found : 'لم يتم العثور، عدّل COLUMN_ALIASES'}</span></div>`;
+  }).join('');
+}
+
+function renderHeroAndChart(){
+  const {salesRows, returnSalesRows, purchRows, returnPurchRows} = state;
+
   const heroGrid = document.getElementById('heroGrid');
   heroGrid.innerHTML = '';
   let prevNetSales = null, prevNetPurch = null;
@@ -382,62 +437,79 @@ function render(){
     heroGrid.appendChild(card);
   });
 
-  // ---- مقارنة السنوات chart ----
   const salesByYear = YEARS.map(y => sumWhere(salesRows,r=>r.year===y) - sumWhere(returnSalesRows,r=>r.year===y));
   const purchByYear = YEARS.map(y => sumWhere(purchRows,r=>r.year===y) - sumWhere(returnPurchRows,r=>r.year===y));
   drawYearChart(salesByYear, purchByYear);
+}
+
+function renderFilteredSections(){
+  const {salesRows, returnSalesRows, purchRows, returnPurchRows} = state;
+  const sRows = applyYearFilter(salesRows), rsRows = applyYearFilter(returnSalesRows);
+  const pRows = applyYearFilter(purchRows), rpRows = applyYearFilter(returnPurchRows);
 
   // ---- أكبر العملاء ----
   const custMap = {};
-  salesRows.forEach(r=>{ if(r.customer){ custMap[r.customer]=(custMap[r.customer]||0)+r.amount; }});
-  returnSalesRows.forEach(r=>{ if(r.customer){ custMap[r.customer]=(custMap[r.customer]||0)-r.amount; }});
-  const topCustomers = Object.entries(custMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  fillLedger('customersTable', topCustomers.map(([name,val],i)=>({rank:i+1,name,val})), topCustomers[0]?.[1]||1, 'customer');
+  sRows.forEach(r=>{ if(r.customer){ custMap[r.customer]=(custMap[r.customer]||0)+r.amount; }});
+  rsRows.forEach(r=>{ if(r.customer){ custMap[r.customer]=(custMap[r.customer]||0)-r.amount; }});
+  state.customersFull = Object.entries(custMap).map(([name,val])=>({name,val})).sort((a,b)=>b.val-a.val)
+    .map((r,i)=>({...r, idx:i}));
 
-  // ---- مطابقة الأرقام مع الشيت (إجماليات خام) ----
+  // ---- مطابقة الأرقام مع الشيت ----
   const verify = document.getElementById('verifyGrid');
-  const totalSales = salesRows.reduce((a,r)=>a+r.amount,0);
-  const totalRS = returnSalesRows.reduce((a,r)=>a+r.amount,0);
-  const totalP = purchRows.reduce((a,r)=>a+r.amount,0);
-  const totalRP = returnPurchRows.reduce((a,r)=>a+r.amount,0);
+  const totalSales = sRows.reduce((a,r)=>a+r.amount,0);
+  const totalRS = rsRows.reduce((a,r)=>a+r.amount,0);
+  const totalP = pRows.reduce((a,r)=>a+r.amount,0);
+  const totalRP = rpRows.reduce((a,r)=>a+r.amount,0);
   verify.innerHTML = [
     ['إجمالي المبيعات (خام)', totalSales],
     ['إجمالي مرتجع المبيعات', totalRS],
     ['إجمالي المشتريات (خام)', totalP],
     ['إجمالي مرتجع المشتريات', totalRP],
-    ['عدد صفوف المبيعات', salesRows.length, true],
-    ['عدد صفوف المشتريات', purchRows.length, true],
+    ['عدد صفوف المبيعات', sRows.length, true],
+    ['عدد صفوف المشتريات', pRows.length, true],
   ].map(([k,v,isCount])=>`<div class="verify-row"><span class="k">${k}</span><span class="num">${isCount? v.toLocaleString('ar-EG') : fmt(v)}</span></div>`).join('');
 
   // ---- مندوبي المبيعات ----
   const repMap = {};
-  salesRows.forEach(r=>{ if(r.salesRep){ repMap[r.salesRep] = repMap[r.salesRep] || {sales:0,ret:0}; repMap[r.salesRep].sales += r.amount; }});
-  returnSalesRows.forEach(r=>{ /* مرتجعات المبيعات مربوطة بالكود مش دايمًا فيها مندوب، فبنوزعها حسب نسبة كل مندوب من نفس الكود لو متاح، وإلا تتجاهل */ });
-  const repRows = Object.entries(repMap).map(([name,v])=>({name, net:v.sales-v.ret, ret:v.ret, sales:v.sales, rate: v.sales? v.ret/v.sales : 0}))
-    .sort((a,b)=>b.net-a.net);
-  fillPerfTable('repsTable', repRows);
+  sRows.forEach(r=>{ if(r.salesRep){ repMap[r.salesRep] = repMap[r.salesRep] || {sales:0,ret:0}; repMap[r.salesRep].sales += r.amount; }});
+  state.repsFull = Object.entries(repMap).map(([name,v])=>({name, net:v.sales-v.ret, ret:v.ret, sales:v.sales, rate: v.sales? v.ret/v.sales : 0}))
+    .sort((a,b)=>b.net-a.net).map((r,i)=>({...r, idx:i}));
 
   // ---- الموردين ----
   const supMap = {};
-  purchRows.forEach(r=>{ const s=r.supplier||'غير معروف'; supMap[s]=supMap[s]||{p:0,rp:0}; supMap[s].p+=r.amount; });
-  returnPurchRows.forEach(r=>{ const s=r.supplier||'غير معروف'; supMap[s]=supMap[s]||{p:0,rp:0}; supMap[s].rp+=r.amount; });
-  const supRows = Object.entries(supMap).map(([name,v])=>({name, net:v.p-v.rp, ret:v.rp, sales:v.p, rate: v.p? v.rp/v.p : 0}))
-    .sort((a,b)=>a.rate-b.rate);
-  fillPerfTable('suppliersTable', supRows, true);
+  pRows.forEach(r=>{ const s=r.supplier||'غير معروف'; supMap[s]=supMap[s]||{p:0,rp:0}; supMap[s].p+=r.amount; });
+  rpRows.forEach(r=>{ const s=r.supplier||'غير معروف'; supMap[s]=supMap[s]||{p:0,rp:0}; supMap[s].rp+=r.amount; });
+  state.suppliersFull = Object.entries(supMap).map(([name,v])=>({name, net:v.p-v.rp, ret:v.rp, sales:v.p, rate: v.p? v.rp/v.p : 0}))
+    .sort((a,b)=>a.rate-b.rate).map((r,i)=>({...r, idx:i}));
 
-  // ---- تشخيص ----
-  const diagBox = document.getElementById('diagBox');
-  diagBox.innerHTML = diag.map(d => {
-    const cls = d.found ? 'ok' : 'bad';
-    const icon = d.found ? '✓' : '✗';
-    return `<div class="diag-row"><span class="${cls}">${icon}</span><span>${d.sheetLabel} — ${d.key}</span><span class="muted">${d.found ? '→ '+d.found : 'لم يتم العثور، عدّل COLUMN_ALIASES'}</span></div>`;
-  }).join('');
+  filterTable('customer');
+  filterTable('rep');
+  filterTable('supplier');
+}
 
-  setTimeout(()=>document.querySelectorAll('.bar-fill').forEach(el=>el.style.transform='scaleX(1)'), 60);
+function filterTable(type){
+  const cfg = {
+    customer: {full:'customersFull', input:'customerSearch', table:'customersTable', kind:'ledger'},
+    rep:      {full:'repsFull',      input:'repSearch',      table:'repsTable',      kind:'perf'},
+    supplier: {full:'suppliersFull', input:'supplierSearch', table:'suppliersTable', kind:'perf', isSupplier:true},
+  }[type];
+  const q = normalize(document.getElementById(cfg.input)?.value || '');
+  const full = state[cfg.full] || [];
+  const rows = q ? full.filter(r => normalize(r.name).includes(q)) : full;
+
+  if(cfg.kind==='ledger'){
+    const shown = q ? rows.slice(0,25) : rows.slice(0,10);
+    const maxVal = full[0]?.val || 1;
+    fillLedger(cfg.table, shown.map(r=>({rank:r.idx+1, name:r.name, val:r.val})), maxVal);
+  } else {
+    fillPerfTable(cfg.table, rows, full.length, cfg.isSupplier);
+  }
+  setTimeout(()=>document.querySelectorAll('.bar-fill').forEach(el=>el.style.transform='scaleX(1)'), 30);
 }
 
 function fillLedger(tableId, rows, maxVal){
   const tbody = document.querySelector('#'+tableId+' tbody');
+  if(!rows.length){ tbody.innerHTML = `<tr><td colspan="4" class="muted" style="padding:16px 10px;">لا توجد نتائج مطابقة</td></tr>`; return; }
   tbody.innerHTML = rows.map(r=>`
     <tr>
       <td><span class="rank">${String(r.rank).padStart(2,'0')}</span></td>
@@ -447,16 +519,17 @@ function fillLedger(tableId, rows, maxVal){
     </tr>`).join('');
 }
 
-function fillPerfTable(tableId, rows, isSupplier){
+function fillPerfTable(tableId, rows, totalCount, isSupplier){
   const tbody = document.querySelector('#'+tableId+' tbody');
-  tbody.innerHTML = rows.map((r,i)=>{
+  if(!rows.length){ tbody.innerHTML = `<tr><td colspan="5" class="muted" style="padding:16px 10px;">لا توجد نتائج مطابقة</td></tr>`; return; }
+  tbody.innerHTML = rows.map(r=>{
     let badge = '';
-    if(rows.length>=4){
-      if(i<3) badge = '<span class="badge best">الأفضل</span>';
-      else if(i>=rows.length-3) badge = '<span class="badge worst">الأسوأ</span>';
+    if(totalCount>=4){
+      if(r.idx<3) badge = '<span class="badge best">الأفضل</span>';
+      else if(r.idx>=totalCount-3) badge = '<span class="badge worst">الأسوأ</span>';
     }
     return `<tr>
-      <td><span class="rank">${String(i+1).padStart(2,'0')}</span></td>
+      <td><span class="rank">${String(r.idx+1).padStart(2,'0')}</span></td>
       <td>${r.name}</td>
       <td class="num">${fmt(isSupplier ? r.sales : r.net)}</td>
       <td class="num">${(r.rate*100).toFixed(1)}%</td>
